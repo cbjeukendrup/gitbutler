@@ -411,8 +411,6 @@ pub struct Detail {
     message_open: bool,
     /// Whether a branch with a pull request shows it in place of its changes.
     review_tab: bool,
-    /// The selected checkout's page shows its overview, Now, rather than its changes.
-    now_open: bool,
     /// What that overview reads beyond the workspace.
     now: worktree::Now,
     /// The file to put the cursor on once the diff loading now lands, as when following the
@@ -569,8 +567,6 @@ impl Detail {
                         // Checks are of one checkout's files, which another's share paths with.
                         this.switch_checkout(project, worktree, cx);
                     }
-                    // A checkout's page opens on its overview, as the project's does.
-                    this.now_open = true;
                     // A page read before opens on its overview too.
                     match this.selection(cx) {
                         Some(Selection::Branches(_)) => this.select_other_branch(None, cx),
@@ -588,9 +584,6 @@ impl Detail {
                 StoreEvent::Reopened => match this.selection(cx) {
                     Some(Selection::Project(project)) => this.pick_opening(&project, cx),
                     Some(Selection::History(_)) => this.pick_newest_operation(cx),
-                    Some(Selection::Uncommitted(_) | Selection::Worktree(..)) => {
-                        this.close_changes(cx);
-                    }
                     _ => {
                         this.close_opened_branch(cx);
                     }
@@ -784,7 +777,6 @@ impl Detail {
             blinked: (0, None),
             message_open: false,
             review_tab: false,
-            now_open: false,
             now: worktree::Now::default(),
             pending_file: None,
             opening: None,
@@ -896,8 +888,7 @@ impl Detail {
     /// The checkout whose uncommitted changes are shown, which the composer commits.
     pub fn selected_checkout(&self, cx: &App) -> Option<(ProjectId, Checkout)> {
         match self.selection(cx)? {
-            Selection::Uncommitted(project) => Some((project, Checkout::Main)),
-            Selection::Worktree(project, name) => Some((project, Checkout::Linked(name))),
+            Selection::Uncommitted(project, checkout) => Some((project, checkout)),
             _ => None,
         }
     }
@@ -915,9 +906,9 @@ impl Detail {
             Selection::Project(project) => self.upstream_source(project, cx)?,
             Selection::History(project) => self.history_source(project)?,
             Selection::Branches(project) => self.branches_source(project)?,
-            Selection::Graph(_) => return None,
-            Selection::Uncommitted(_) => DiffSource::Worktree,
-            Selection::Worktree(_, name) => DiffSource::Linked(name.clone()),
+            Selection::Graph(_) | Selection::Checkout(..) => return None,
+            Selection::Uncommitted(_, Checkout::Main) => DiffSource::Worktree,
+            Selection::Uncommitted(_, Checkout::Linked(name)) => DiffSource::Linked(name.clone()),
             Selection::Mesh(project, id, pick) => self.machine_source(project, id, pick)?,
             // Commits picked with it in one run show their changes together, and with others
             // between them, each one's in turn.
@@ -986,7 +977,7 @@ impl Detail {
             Some(Selection::Branches(project)) => self.load_branches(&project, force, cx),
             Some(Selection::Project(project)) => self.load_upstream(&project, false, force, cx),
             Some(Selection::Mesh(project, ..)) => self.load_machines(&project, force, cx),
-            Some(Selection::Uncommitted(_) | Selection::Worktree(..)) => self.load_now(force, cx),
+            Some(Selection::Checkout(..) | Selection::Uncommitted(..)) => self.load_now(force, cx),
             _ => {}
         }
     }
@@ -1439,14 +1430,6 @@ impl Detail {
         let side_list = self.list_page(cx);
         // Not the file list under a pull request's tab, which draws none.
         let files = !side_list && self.files_shown(cx) && !self.showing_review(cx);
-        // A checkout's overview has nothing for the keys, so the list takes them on its first
-        // file, which opens in the overview's place, as the first step down would.
-        if files
-            && self.showing_now(cx)
-            && let Some(&first) = self.listed_files(cx).first()
-        {
-            self.scroll_to_file(first, true, cx);
-        }
         // So has what the project's page opens on, what merged lately, and the Branches page's
         // overview: their lists take them on their first row, as the first step down would.
         if self.showing_shipped(cx) {
@@ -1962,13 +1945,6 @@ impl Detail {
 
     /// Step `delta` files through the ones shown, letting picks go.
     fn move_file(&mut self, delta: isize, cx: &mut Context<Self>) {
-        // From a checkout's overview, the first step opens the file the list starts with, and
-        // G the one it ends with.
-        if self.showing_now(cx)
-            && let Some(&file) = panes::step_from(&self.listed_files(cx), None, delta)
-        {
-            return self.scroll_to_file(file, true, cx);
-        }
         if let Some(file) = self.file_step(delta, cx) {
             self.file_picks.clear();
             self.scroll_to_file(file, true, cx);
@@ -2024,15 +2000,8 @@ impl Detail {
     }
 
     pub(crate) fn move_hunk(&mut self, forward: bool, window: &mut Window, cx: &mut Context<Self>) {
-        // The keys go on to hunks that show, not a cursor out of sight. From a checkout's
-        // overview, the first step opens the file the list starts with, as `move_file`'s does,
-        // and from a branch's pull request, its changes. Nothing else that hides the diff shows
-        // its hunks.
-        if self.showing_now(cx)
-            && let Some(&first) = self.listed_files(cx).first()
-        {
-            self.scroll_to_file(first, true, cx);
-        }
+        // The keys go on to hunks that show, not a cursor out of sight. From a branch's pull
+        // request, its changes. Nothing else that hides the diff shows its hunks.
         if self.showing_review(cx) {
             self.review_tab = false;
             cx.notify();
@@ -2330,15 +2299,13 @@ impl Detail {
         self.diff_path(self.current_file())
     }
 
-    /// The path of the current file, unless the diff it's in is hidden: under a
-    /// pull request's tab, which draws no files, or a checkout's overview, where the list
-    /// marks only picked ones.
+    /// The path of the current file, unless the diff it's in is hidden under a pull
+    /// request's tab, which draws no files.
     pub fn shown_cursor_path(&self, cx: &App) -> Option<String> {
         if self.showing_review(cx) {
             return None;
         }
-        let path = self.cursor_path()?;
-        (!self.showing_now(cx) || self.file_picks.contains(&path)).then_some(path)
+        self.cursor_path()
     }
 
     /// What copying takes from here: the selected text, else the hunk the cursor is on or the
@@ -2733,8 +2700,6 @@ impl Detail {
     /// `glide`, as a key or a click goes from file to file. A diff that's just loaded, or a
     /// filter being typed, goes there at once.
     fn scroll_to_file(&mut self, file_ix: usize, glide: bool, cx: &mut Context<Self>) {
-        // A file picked on a checkout's page shows its diff in place of the overview.
-        self.now_open = false;
         self.cursor = Cursor::on_file(file_ix);
         self.follow_alone(cx);
         if let Some(row) = self.row_of(|row| matches!(row, DiffRow::File(ix) if *ix == file_ix)) {
@@ -2771,10 +2736,10 @@ impl Detail {
             Some(Selection::History(project)) if self.selected_operation(&project).is_some() => {
                 self.header_height.get()
             }
-            Some(Selection::Uncommitted(project)) if self.editing(&project, cx).is_none() => {
+            Some(Selection::Checkout(..)) => self.header_height.get(),
+            Some(Selection::Uncommitted(project, _)) if self.editing(&project, cx).is_none() => {
                 self.header_height.get()
             }
-            Some(Selection::Worktree(..)) => self.header_height.get(),
             _ => 0.,
         }
     }
@@ -2837,13 +2802,14 @@ impl Detail {
         self.focus.is_focused(window) && self.without_changes(cx)
     }
 
-    /// Whether the page is an overview with no column beside it: Inactive and Network
-    /// worktrees', as the navigator lists what they sum up, and the Graph's.
+    /// Whether the page is an overview with no column beside it: a worktree's, Inactive and
+    /// Network worktrees', as the navigator lists what they sum up, and the Graph's.
     pub fn overview_only(&self, cx: &App) -> bool {
         matches!(
             self.selection(cx),
             Some(
                 Selection::Graph(_)
+                    | Selection::Checkout(..)
                     | Selection::Section(_, Section::Inactive | Section::Mesh)
                     | Selection::Terminal(..)
             )
@@ -2924,8 +2890,8 @@ impl Render for Detail {
             ),
             Some(selection) => {
                 let side = match selection {
-                    Selection::Uncommitted(project) => {
-                        self.render_uncommitted_side(project, &Checkout::Main, &theme, window, cx)
+                    Selection::Uncommitted(project, checkout) => {
+                        self.render_uncommitted_side(project, checkout, &theme, window, cx)
                     }
                     Selection::Commit(project, id) => {
                         self.render_commit_side(project, *id, &theme, cx)
@@ -2936,10 +2902,6 @@ impl Render for Detail {
                     Selection::History(project) => {
                         self.render_history_side(project, &theme, window, cx)
                     }
-                    Selection::Worktree(project, name) => {
-                        let checkout = Checkout::Linked(name.clone());
-                        self.render_uncommitted_side(project, &checkout, &theme, window, cx)
-                    }
                     Selection::Stack(project, bottom) => {
                         self.render_stack_side(project, bottom.as_ref(), &theme, cx)
                     }
@@ -2948,6 +2910,7 @@ impl Render for Detail {
                     }
                     // No column: the overview takes the page.
                     Selection::Graph(_)
+                    | Selection::Checkout(..)
                     | Selection::Section(_, Section::Inactive | Section::Mesh)
                     | Selection::Terminal(..) => div().into_any_element(),
                     Selection::Mesh(project, id, pick) => {
@@ -3006,12 +2969,13 @@ impl Render for Detail {
                     Selection::Project(project) => {
                         Some(self.render_project_header(project, &theme, cx))
                     }
-                    Selection::Uncommitted(project) if self.editing(project, cx).is_none() => {
-                        Some(self.render_checkout_header(project, &Checkout::Main, &theme, cx))
+                    Selection::Checkout(project, checkout) => {
+                        Some(self.render_checkout_header(project, checkout, false, &theme, cx))
                     }
-                    Selection::Worktree(project, name) => {
-                        let checkout = Checkout::Linked(name.clone());
-                        Some(self.render_checkout_header(project, &checkout, &theme, cx))
+                    Selection::Uncommitted(project, checkout)
+                        if self.editing(project, cx).is_none() =>
+                    {
+                        Some(self.render_checkout_header(project, checkout, true, &theme, cx))
                     }
                     _ => None,
                 };
@@ -3067,11 +3031,8 @@ impl Render for Detail {
                     Selection::History(project) => {
                         self.render_operation_header(project, &theme, cx)
                     }
-                    Selection::Uncommitted(project) if self.showing_now(cx) => {
-                        Some(self.render_now(project, &Checkout::Main, cx))
-                    }
-                    Selection::Worktree(project, name) if self.showing_now(cx) => {
-                        Some(self.render_now(project, &Checkout::Linked(name.clone()), cx))
+                    Selection::Checkout(project, checkout) => {
+                        Some(self.render_now(project, checkout, cx))
                     }
                     _ => None,
                 };
@@ -3201,7 +3162,7 @@ impl Render for Detail {
                 }
                 if this.line_picks.is_some() {
                     this.discard_picked_lines(window, cx)
-                } else if let Some(hunk) = this.cursor.at.hunk().filter(|_| !this.showing_now(cx)) {
+                } else if let Some(hunk) = this.cursor.at.hunk() {
                     this.discard(this.cursor.file, Some(hunk), window, cx)
                 }
             }))
@@ -3210,7 +3171,7 @@ impl Render for Detail {
                     this.discard_picked_lines(window, cx)
                 } else if !this.file_picks.is_empty() {
                     this.discard_picked(window, cx)
-                } else if !this.showing_now(cx) {
+                } else {
                     this.discard(this.current_file(), None, window, cx)
                 }
             }))

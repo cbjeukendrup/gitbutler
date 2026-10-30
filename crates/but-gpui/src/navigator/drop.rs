@@ -11,6 +11,7 @@ use gpui::{
 
 use super::Navigator;
 use super::rows::Row;
+use crate::backend::Checkout;
 use crate::state::{Cut, ProjectId, Selection, Store};
 use crate::theme::Theme;
 use crate::transfer::{Place, Transfer};
@@ -168,7 +169,7 @@ impl Navigator {
         let store = self.store.read(cx);
         let payload = store.dragging.as_ref()?;
         let worktree = |row: &Row| match row {
-            Row::Item(s @ Selection::Worktree(..)) => Some(s.clone()),
+            Row::Item(s @ Selection::Checkout(_, Checkout::Linked(_))) => Some(s.clone()),
             _ => None,
         };
         let within = |row: &&Row| !matches!(row, Row::WorktreeDivider | Row::Gap);

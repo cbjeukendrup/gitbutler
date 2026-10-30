@@ -328,7 +328,7 @@ pub(super) fn stops<'a>(
             stops.push(Stop::NewStack { first: true });
         }
         match row {
-            Row::Item(heading @ Selection::Uncommitted(p)) if p == project => {
+            Row::Item(heading @ Selection::Checkout(p, Checkout::Main)) if p == project => {
                 end_stack(&mut stops, &mut bottom);
                 in_branch = false;
                 in_main = open(heading);
@@ -371,9 +371,12 @@ pub(super) fn stops<'a>(
                 }
             }
             // What a branch lists beside its own commits: its remote's, the folds of its
-            // commits, stand-ins for commits on their way, and the copies of those moving.
+            // commits, stand-ins for commits on their way, and the copies of those moving; and
+            // a checkout's uncommitted changes, first under its heading.
             Row::Item(
-                Selection::Upstream(..) | Selection::Section(_, Section::Upstream(Some(_))),
+                Selection::Upstream(..)
+                | Selection::Section(_, Section::Upstream(Some(_)))
+                | Selection::Uncommitted(..),
             )
             | Row::More(..)
             | Row::Fewer(..)
@@ -405,7 +408,7 @@ pub(super) fn stops<'a>(
 /// into, as `lands` says, and which of them is `home`, the row it starts from, listed whether
 /// it lands there or not. A branch's commits take it, but a folded branch stands in for its
 /// newest commit, out of sight, and the branch being squashed squashes into one at its own row.
-/// A checkout's heading takes what's uncommitted into it. Not the default branch a linked
+/// A checkout's uncommitted changes take what's uncommitted into them. Not the default branch a linked
 /// worktree can have checked out, which work stays off.
 pub(super) fn squash_stops<'a>(
     rows: impl IntoIterator<Item = &'a Row>,
@@ -420,13 +423,9 @@ pub(super) fn squash_stops<'a>(
     let mut in_branch = false;
     for row in rows {
         let target = match row {
-            Row::Item(Selection::Uncommitted(p)) if p == project => {
+            Row::Item(Selection::Uncommitted(p, checkout)) if p == project => {
                 in_branch = false;
-                Some(Target::Uncommitted(Checkout::Main))
-            }
-            Row::Item(Selection::Worktree(p, name)) if p == project => {
-                in_branch = false;
-                Some(Target::Uncommitted(Checkout::Linked(name.clone())))
+                Some(Target::Uncommitted(checkout.clone()))
             }
             Row::Item(item @ Selection::Branch(p, Some(name)))
                 if p == project && workspace.target_branch.as_ref() != Some(name) =>
@@ -724,7 +723,7 @@ impl Navigator {
             return self.switch(moving, Op::Squash(Messages::default()), cx);
         }
         let (project, what) = match store.selection.clone() {
-            Some(item @ (Selection::Uncommitted(_) | Selection::Worktree(..))) => {
+            Some(item @ Selection::Uncommitted(..)) => {
                 let project = item.project().clone();
                 let what = (store.checkout_of(&item))
                     .and_then(|worktree| self.uncommitted(&project, worktree, cx));
@@ -773,7 +772,7 @@ impl Navigator {
         let Some(what) = self.uncommitted(&project, worktree.clone(), cx) else {
             return snack(&self.store, "Nothing uncommitted to squash", cx);
         };
-        let heading = Selection::uncommitted_in(project.clone(), worktree);
+        let changes = Selection::Uncommitted(project.clone(), worktree);
         let moving = Move {
             project,
             what,
@@ -784,7 +783,7 @@ impl Navigator {
             return snack(&self.store, "Those changes can't go in there", cx);
         }
         self.store
-            .update(cx, |store, cx| store.select(Some(heading), cx));
+            .update(cx, |store, cx| store.select(Some(changes), cx));
         self.reveal_selection = true;
         self.store
             .update(cx, |store, cx| store.set_moving(Some(moving), cx));
@@ -1175,8 +1174,8 @@ fn commits_selected(store: &Store) -> Option<(ProjectId, Moving)> {
         Selection::Branch(project, Some(branch)) => Some((project, Moving::Branch(branch))),
         Selection::Branch(_, None)
         | Selection::Project(_)
-        | Selection::Uncommitted(_)
-        | Selection::Worktree(..)
+        | Selection::Checkout(..)
+        | Selection::Uncommitted(..)
         | Selection::Stack(..)
         | Selection::Upstream(..)
         | Selection::Section(..)
@@ -1201,11 +1200,8 @@ fn terminal_lists<'a>(
     let mut under = false;
     for row in rows {
         let checkout = match row {
-            Row::Item(heading @ Selection::Uncommitted(p)) if p == project => {
-                Some((heading, Checkout::Main))
-            }
-            Row::Item(heading @ Selection::Worktree(p, name)) if p == project => {
-                Some((heading, Checkout::Linked(name.clone())))
+            Row::Item(heading @ Selection::Checkout(p, checkout)) if p == project => {
+                Some((heading, checkout.clone()))
             }
             Row::Item(Selection::Terminal(p, id)) if p == project && under => {
                 if let Some((_, list)) = lists.last_mut() {
@@ -1506,7 +1502,8 @@ mod tests {
         let named = |name: &str| Some(full(&format!("refs/heads/{name}")));
         let rows = vec![
             Row::Item(Selection::Project(p())),
-            Row::Item(Selection::Uncommitted(p())),
+            Row::Item(Selection::Checkout(p(), Checkout::Main)),
+            Row::Item(Selection::Uncommitted(p(), Checkout::Main)),
             // Listed above the stacks, which it doesn't part from the heading either.
             Row::Item(Selection::Terminal(p(), TerminalId(1))),
             Row::Item(Selection::Branch(p(), named("ui"))),
@@ -1518,7 +1515,8 @@ mod tests {
             Row::Between(p()),
             Row::Item(Selection::Branch(p(), named("typo"))),
             Row::WorktreeDivider,
-            Row::Item(Selection::Worktree(p(), "wt".into())),
+            Row::Item(Selection::Checkout(p(), Checkout::Linked("wt".into()))),
+            Row::Item(Selection::Uncommitted(p(), Checkout::Linked("wt".into()))),
             Row::Item(Selection::Branch(p(), named("agent"))),
             Row::Item(Selection::Commit(p(), id(5))),
             Row::WorktreeDivider,
@@ -1697,7 +1695,7 @@ new branch below agent
         let home = Target::Commit(id(2));
         let lands = |stop: &Stop| *stop != Stop::Into(Target::Commit(id(5)));
         let (stops, start) = squash_stops(&rows, &project, &ws, &home, open, lands).unwrap();
-        // Each heading, uncommitting; every commit, but 5 where it doesn't land, and 2, where
+        // Each checkout's changes, uncommitting; every commit, but 5 where it doesn't land, and 2, where
         // it starts; and folded typo for its newest commit, out of sight. Open branches have
         // their newest commits listed.
         snapbox::assert_data_eq!(
@@ -1794,17 +1792,18 @@ new stack
         let terminal = |n| Row::Item(Selection::Terminal(p(), TerminalId(n)));
         let rows = [
             Row::Item(Selection::Project(p())),
-            Row::Item(Selection::Uncommitted(p())),
+            Row::Item(Selection::Checkout(p(), Checkout::Main)),
+            Row::Item(Selection::Uncommitted(p(), Checkout::Main)),
             terminal(1),
             terminal(2),
             Row::Item(Selection::Branch(p(), Some(full("refs/heads/api")))),
-            Row::Item(Selection::Worktree(p(), "wt".into())),
-            Row::Item(Selection::Worktree(p(), "folded".into())),
+            Row::Item(Selection::Checkout(p(), Checkout::Linked("wt".into()))),
+            Row::Item(Selection::Checkout(p(), Checkout::Linked("folded".into()))),
             terminal(3),
-            Row::Item(Selection::Worktree(p(), "empty".into())),
+            Row::Item(Selection::Checkout(p(), Checkout::Linked("empty".into()))),
         ];
         // `folded` lists terminal 3 as it closes.
-        let open = |heading: &Selection| !matches!(heading, Selection::Worktree(_, name) if name == "folded");
+        let open = |heading: &Selection| !matches!(heading, Selection::Checkout(_, Checkout::Linked(name)) if name == "folded");
         let lists = terminal_lists(&rows, &project, open);
         let (stops, start) = group_slots(&lists, &TerminalId(1)).unwrap();
         let stops: Vec<Stop> = (stops.into_iter())

@@ -334,7 +334,10 @@ fn nearest_slot(cards: &[(&ProjectId, f32)], dragged: &ProjectId, depth: f32) ->
 #[cfg(test)]
 mod tests {
     use super::{CardSlot, Row, cards, nearest_slot};
-    use crate::state::{ProjectId, Selection};
+    use crate::{
+        backend::Checkout,
+        state::{ProjectId, Selection},
+    };
 
     #[test]
     fn a_dragged_card_goes_where_its_heading_would_be_nearest_the_pointer() {
@@ -391,7 +394,7 @@ mod tests {
         let (a, b) = (ProjectId::from("a"), ProjectId::from("b"));
         let rows = [
             Row::Item(Selection::Project(a.clone())),
-            Row::Item(Selection::Uncommitted(a.clone())),
+            Row::Item(Selection::Uncommitted(a.clone(), Checkout::Main)),
             Row::Item(Selection::History(a.clone())),
             Row::Gap,
             Row::Item(Selection::Project(b.clone())),
