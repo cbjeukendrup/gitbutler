@@ -9,14 +9,6 @@ import styles from "./SidebarRow.module.css";
 import { StatusLed } from "./StatusLed.tsx";
 import { Tooltip } from "./Tooltip.tsx";
 
-/**
- * How much a sidebar row says. `compact` is one line with its state at the right edge, where it
- * stays: the menu follows it under the pointer, and the actions take its place. `rich` keeps the
- * state and the actions in view: right after the name on a one-line row, or on a second line under
- * a pull request's title.
- */
-export type SidebarRowLayout = "compact" | "rich";
-
 /** What every sidebar row takes. */
 type RowProps = {
 	/** How many levels the row sits below the top of the card, one guide per level. */
@@ -30,9 +22,9 @@ type RowProps = {
 	selected?: boolean;
 	/** `MetaCount`s and a `CiStatus`, in the order the row should read them. */
 	meta?: ReactNode;
-	/** The row's next step, as small outline `Button`s: Push, Update, Create PR, View PR. In
-	 * `compact` they take the state's place under the pointer and on keyboard focus; leave them out
-	 * when there is none, and the row keeps its state there. */
+	/** The row's next step, as small outline `Button`s: Push, Update, Create PR, View PR. They take
+	 * the state's place under the pointer and on keyboard focus; leave them out when there is none,
+	 * and the row keeps its state there. */
 	actions?: ReactNode;
 	/** The row's menu button, a small ghost icon-only `Button`. It shows under the pointer, on
 	 * keyboard focus and on a selected row. */
@@ -123,15 +115,16 @@ const measureRuns = (event: PointerEvent<HTMLElement>) => {
 	}
 };
 
-/** The one-line row every sidebar item but a pull request in `rich` is drawn on. `spinner` is what
- * stands in for `icon` while it is `busy`, a plain one unless the item colours its own. */
+/** The one line every sidebar item is drawn on: the name takes the line and the state sits at the
+ * end, where it stays; the menu follows it under the pointer, and the actions take its place.
+ * `spinner` is what stands in for `icon` while it is `busy`, a plain one unless the item colours
+ * its own. */
 const Row: FC<
 	RowProps & {
 		name: string;
 		icon: ReactNode;
 		spinner?: ReactNode;
 		label: ReactNode;
-		layout: SidebarRowLayout;
 		rowClassName?: string;
 	}
 > = ({
@@ -139,7 +132,6 @@ const Row: FC<
 	icon,
 	spinner = <Icon name="spinner" />,
 	label,
-	layout,
 	busy = false,
 	depth = 0,
 	folded,
@@ -157,7 +149,7 @@ const Row: FC<
 		render: render ?? <div />,
 		state: { selected },
 		props: mergeProps<"div">(props, {
-			className: classes(styles.row, styles[layout], rowClassName),
+			className: classes(styles.row, styles.compact, rowClassName),
 			onPointerEnter: measureRuns,
 			children: (
 				<>
@@ -171,7 +163,7 @@ const Row: FC<
 						<span className={styles.icon}>{icon}</span>
 					)}
 					<span className={styles.label}>{label}</span>
-					{layout === "compact" ? (
+					{
 						// The state and the actions share the row's end, so neither moves when one gives way
 						// to the other.
 						(meta !== undefined || actions !== undefined) && (
@@ -185,12 +177,7 @@ const Row: FC<
 								{actions !== undefined && <span className={styles.hover}>{actions}</span>}
 							</span>
 						)
-					) : (
-						<>
-							{meta !== undefined && <span className={styles.meta}>{meta}</span>}
-							{actions !== undefined && <span className={styles.actions}>{actions}</span>}
-						</>
-					)}
+					}
 					{menu !== undefined && (
 						<span className={styles.menu} data-menu>
 							{menu}
@@ -209,17 +196,20 @@ const Row: FC<
  *
  * Folded, its `meta` sums up what it holds (`repos`, or `worktrees` when grouped by repository)
  * and its age. Open as a card's header, it shows no age: its age is the newest of the rows under
- * it, which show their own. It is always `compact`.
+ * it, which show their own.
  *
  * @import import { MachineItem } from "@gitbutler/ui-react/SidebarRow.tsx";
  */
-export const MachineItem: FC<
-	{ name: string; icon: ReactNode; online: boolean } & Omit<RowProps, "layout">
-> = ({ name, icon, online, tooltip, ...props }) => (
+export const MachineItem: FC<{ name: string; icon: ReactNode; online: boolean } & RowProps> = ({
+	name,
+	icon,
+	online,
+	tooltip,
+	...props
+}) => (
 	<Row
 		{...props}
 		name={name}
-		layout="compact"
 		icon={<span className={styles.picture}>{icon}</span>}
 		label={
 			<>
@@ -237,22 +227,21 @@ export const MachineItem: FC<
  * single worktree is `behind` and its age (its uncommitted files are an {@link UncommittedItem},
  * several worktrees are rows of their own with their own ages); folded, the full summary, its
  * `worktrees` when it has several, and its age. Open as a card's header, it shows no age, as
- * {@link MachineItem} doesn't. In `rich`, the counts follow its name and Update follows them
- * whenever it is behind.
- * Folded, it is a summary and reads as `compact` in either layout: the whole summary and Update
- * don't fit after a name at sidebar width.
+ * {@link MachineItem} doesn't.
  *
  * `icon` defaults to the repository glyph; a host can pass the repository's own avatar.
  *
  * @import import { RepoItem } from "@gitbutler/ui-react/SidebarRow.tsx";
  */
-export const RepoItem: FC<
-	{ name: string; icon?: ReactNode; layout?: SidebarRowLayout } & RowProps
-> = ({ name, icon, layout = "compact", tooltip, ...props }) => (
+export const RepoItem: FC<{ name: string; icon?: ReactNode } & RowProps> = ({
+	name,
+	icon,
+	tooltip,
+	...props
+}) => (
 	<Row
 		{...props}
 		name={name}
-		layout={props.folded === true ? "compact" : layout}
 		icon={icon ?? <Icon name="repo" />}
 		label={
 			<Name tooltip={tooltip} className={classes("text-14", "text-semibold", styles.name)}>
@@ -273,17 +262,18 @@ export const RepoItem: FC<
  * it takes the folder-fork glyph, leads with a "Fork" badge, as a pull request leads with its
  * number, and is named after the fork's owner rather than "Main worktree".
  *
- * Folded, it reads as `compact` in either layout, as {@link RepoItem} does.
- *
  * @import import { WorktreeItem } from "@gitbutler/ui-react/SidebarRow.tsx";
  */
-export const WorktreeItem: FC<
-	{ name: string; main?: boolean; fork?: boolean; layout?: SidebarRowLayout } & RowProps
-> = ({ name, main = false, fork = false, layout = "compact", tooltip, ...props }) => (
+export const WorktreeItem: FC<{ name: string; main?: boolean; fork?: boolean } & RowProps> = ({
+	name,
+	main = false,
+	fork = false,
+	tooltip,
+	...props
+}) => (
 	<Row
 		{...props}
 		name={name}
-		layout={props.folded === true ? "compact" : layout}
 		icon={<Icon name={fork ? "folder-fork" : main ? "folder" : "folder-copy"} />}
 		label={
 			<>
@@ -328,13 +318,8 @@ const prBadge: Record<PullRequestState, BadgeVariant> = {
  * `folded="empty"`, so its row isn't bare and lines up with the branches that fold. `actions` hold the one next step (Resolve, Update, Push, Create PR or Merge),
  * then View PR on a branch with a request.
  *
- * In `rich`, an open or draft request takes two lines: its title, which wraps once and then ends in
- * an ellipsis, over the branch's name (`branch`), its state and its actions. A plain branch stays
- * one line, its state and actions right after its name, and the name gives way first. A merged or
- * closed request is done with: one muted line in either layout.
- *
- * A branch merged into its target with no request known takes `merged`: the same muted line, its
- * branch glyph and a Merged badge.
+ * A merged request is done with: its title recedes. A branch merged into its target with no request
+ * known takes `merged`: the same muted title, its branch glyph and a Merged badge.
  *
  * While an action on the branch runs, its `busy` spinner takes the glyph's colour. A merge takes `pr` state `merged` as it starts, so the row reads as where it is heading;
  * back to `open` if it is refused.
@@ -347,13 +332,9 @@ export const BranchItem: FC<
 		pr?: { number: number; state: PullRequestState };
 		/** Merged into the target with no pull request known. Ignored with `pr`. */
 		merged?: boolean;
-		/** The branch's name, under a pull request's title in `rich`. */
-		branch?: string;
-		layout?: SidebarRowLayout;
 	} & RowProps
-> = ({ title, pr, merged = false, branch, layout = "compact", tooltip, ...props }) => {
+> = ({ title, pr, merged = false, tooltip, ...props }) => {
 	const state = pr?.state ?? (merged ? "merged" : undefined);
-	const done = state === "merged" || state === "closed";
 	const glyph = (name: IconName) => (
 		<Icon
 			name={name}
@@ -368,14 +349,10 @@ export const BranchItem: FC<
 		</Badge>
 	);
 
-	if (layout === "rich" && pr && !done)
-		return <TwoLineBranch {...props} {...{ title, icon, spinner, badge, branch, tooltip }} />;
-
 	return (
 		<Row
 			{...props}
 			name={title}
-			layout={done ? "compact" : layout}
 			rowClassName={classes(state === "merged" && styles.merged)}
 			icon={icon}
 			spinner={spinner}
@@ -392,83 +369,6 @@ export const BranchItem: FC<
 			}
 		/>
 	);
-};
-
-/** An open or draft pull request in `rich`: its title over its branch, state and actions. */
-const TwoLineBranch: FC<
-	RowProps & {
-		title: string;
-		icon: ReactNode;
-		spinner: ReactNode;
-		badge: ReactNode;
-		branch: string | undefined;
-	}
-> = ({
-	title,
-	icon,
-	spinner,
-	badge,
-	branch,
-	busy = false,
-	depth = 0,
-	folded,
-	onToggleFolded,
-	selected = false,
-	meta,
-	actions: actionsSlot,
-	menu: menuSlot,
-	tooltip,
-	render,
-	...props
-}) => {
-	const [actions, menu] = [filled(actionsSlot), filled(menuSlot)];
-	return useRender({
-		render: render ?? <div />,
-		state: { selected },
-		props: mergeProps<"div">(props, {
-			className: classes(styles.row, styles.rich, styles.twoLine),
-			children: (
-				<>
-					<Steps depth={depth} folded={folded} onToggleFolded={onToggleFolded} name={title} />
-					<span className={styles.content}>
-						{/* Inline, so a title that wraps carries on under the glyph, as text does. */}
-						<span className={classes("text-14", "text-semibold", styles.line1)}>
-							<span className={styles.lead}>
-								{/* On the spinner alone, so the badge beside it keeps its own words. */}
-								{busy ? (
-									<output className={styles.leadSpinner} aria-label="Working">
-										{spinner}
-									</output>
-								) : (
-									icon
-								)}
-								{badge}
-							</span>
-							{tooltip === undefined ? (
-								title
-							) : (
-								<Tooltip content={tooltip}>
-									<span>{title}</span>
-								</Tooltip>
-							)}
-						</span>
-						<span className={styles.line2}>
-							{branch !== undefined && (
-								<MetaCount type="branch" className={styles.branch}>
-									{branch}
-								</MetaCount>
-							)}
-							{meta}
-							{actions !== undefined && <span className={styles.actions}>{actions}</span>}
-						</span>
-					</span>
-					{menu !== undefined && (
-						<span className={classes(styles.menu, styles.corner)}>{menu}</span>
-					)}
-				</>
-			),
-		}),
-	});
 };
 
 /**
@@ -490,7 +390,6 @@ export const CommitItem: FC<{ message: string; pushed?: boolean; merge?: boolean
 	<Row
 		{...props}
 		name={message}
-		layout="compact"
 		icon={<Icon name={merge ? "branch-merge" : pushed ? "commit-fill" : "commit"} />}
 		label={
 			<Name tooltip={tooltip} className={classes("text-13", styles.name)}>
@@ -520,7 +419,6 @@ export const TargetItem: FC<{ target: string; count: number } & Omit<RowProps, "
 	<Row
 		{...props}
 		name={`New on ${target}`}
-		layout="compact"
 		rowClassName={styles.target}
 		icon={<Icon name="arrow-in-box" />}
 		label={
@@ -542,21 +440,16 @@ export const TargetItem: FC<{ target: string; count: number } & Omit<RowProps, "
  * (`count`). It sits where the work does, first among the worktree's branches:
  * under the worktree, or under a repository with only one. It opens the changes themselves, as a
  * branch opens its commits; the worktree's own row opens its overview. Leave it out while the
- * worktree is clean. Its `menu` shows under the pointer, on keyboard focus and when selected. In
- * `rich` its count follows the label, as the rows around it do.
+ * worktree is clean. Its `menu` shows under the pointer, on keyboard focus and when selected.
  *
  * @import import { UncommittedItem } from "@gitbutler/ui-react/SidebarRow.tsx";
  */
 export const UncommittedItem: FC<
-	{ count: number; layout?: SidebarRowLayout } & Omit<
-		RowProps,
-		"folded" | "onToggleFolded" | "meta" | "actions"
-	>
-> = ({ count, layout = "compact", tooltip, ...props }) => (
+	{ count: number } & Omit<RowProps, "folded" | "onToggleFolded" | "meta" | "actions">
+> = ({ count, tooltip, ...props }) => (
 	<Row
 		{...props}
 		name="Uncommitted changes"
-		layout={layout}
 		icon={<Icon name="diff" />}
 		label={
 			<Name tooltip={tooltip} className={classes("text-14", "text-semibold", styles.name)}>
@@ -590,7 +483,6 @@ export const StackCaption: FC<
 		<Row
 			{...props}
 			name={`Stack of ${count}`}
-			layout="compact"
 			depth={depth}
 			folded={folded}
 			onToggleFolded={onToggleFolded}
@@ -685,7 +577,6 @@ export const NoticeItem: FC<
 	<Row
 		{...props}
 		name={message}
-		layout="compact"
 		icon={<Icon name="warning" />}
 		label={
 			<Name tooltip={tooltip} className={classes("text-13", styles.name, styles.notice)}>
