@@ -18,8 +18,8 @@ type Props = {
 	 */
 	icon?: ReactNode;
 	/**
-	 * An `EntityAvatar` (or its picker) ahead of the title and meta, for an entity rather than a view
-	 * of code: a machine, a cloud session. A branch or a commit takes an `icon` instead.
+	 * A picture ahead of the title and meta, 38px, for an entity rather than a view of code: a
+	 * machine's kind, a cloud session's. A branch or a commit takes an `icon` instead.
 	 */
 	avatar?: ReactNode;
 	/**
