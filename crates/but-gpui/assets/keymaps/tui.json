@@ -252,6 +252,12 @@
       "backspace": "message_editor::LeaveEmptyBody"
     }
   },
+  // A commit's title edited in its row saves on Return too, and Tab goes on to its body, in the
+  // commit's header.
+  {
+    "context": "Reword > TextInput",
+    "bindings": { "tab": "message_editor::ToBody" }
+  },
   // After the text field's own keys, so these win inside the palette. ⌃P and ⌃N, as in the
   // TUI's jump.
   {

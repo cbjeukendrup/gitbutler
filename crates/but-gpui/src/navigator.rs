@@ -315,8 +315,8 @@ impl<'a> RowStyle<'a> {
         })
     }
 
-    /// A commit's row, `indent` in: `glyph` and its title, with a hairline while it's unread.
-    /// Only a missing title is quieter.
+    /// A commit's row, `indent` in: `glyph` and its title, or `rename`, the field it's being
+    /// edited in, with a hairline while it's unread. Only a missing title is quieter.
     fn commit_line(
         &self,
         id: String,
@@ -324,6 +324,7 @@ impl<'a> RowStyle<'a> {
         glyph: impl IntoElement,
         title: SharedString,
         unread: bool,
+        rename: Option<AnyElement>,
     ) -> Stateful<Div> {
         self.row(id, indent)
             .gap(dp(10.))
@@ -334,24 +335,27 @@ impl<'a> RowStyle<'a> {
             })
             .when(unread, |el| el.relative().child(self.unread_line(true)))
             .child(glyph)
-            .child(
-                div()
+            .child(match rename {
+                Some(field) => field,
+                None => div()
                     .flex_1()
                     .min_w_0()
                     .truncate()
                     .when(title.is_empty(), |el| el.text_color(self.muted()))
-                    .child(commit_title(&title)),
-            )
+                    .child(commit_title(&title))
+                    .into_any_element(),
+            })
     }
 
     /// `commit` of `project` as its row draws it, `id` the row's: its glyph by its state, and
-    /// its title as last reworded.
+    /// its title as last reworded, or `rename`, the field it's being edited in.
     fn commit(
         &self,
         id: String,
         project: &ProjectId,
         commit: &Commit,
         store: &Store,
+        rename: Option<AnyElement>,
     ) -> Stateful<Div> {
         let theme = self.theme;
         let (glyph, color) = if commit.conflicted {
@@ -366,7 +370,14 @@ impl<'a> RowStyle<'a> {
         let glyph = small_icon(glyph).text_color(self.meta(color));
         let (title, _) = store.message_of(project, commit);
         let unread = store.is_unread(project, commit);
-        self.commit_line(id, COMMIT_INDENT, glyph, title.to_owned().into(), unread)
+        self.commit_line(
+            id,
+            COMMIT_INDENT,
+            glyph,
+            title.to_owned().into(),
+            unread,
+            rename,
+        )
     }
 }
 
@@ -2554,7 +2565,7 @@ impl Navigator {
         let row = style
             .row(format!("terminal-{}", id.0), 6.)
             .child(icon(Icon::TextCode).text_color(style.muted()))
-            .child(match self.rename_field(item, style.theme) {
+            .child(match self.rename_field(item, style.theme, cx) {
                 Some(field) => field,
                 None => (div().flex_1().min_w_0().truncate().child(title)).into_any_element(),
             })
@@ -2836,7 +2847,7 @@ impl Navigator {
         // An unread commit marks its branch too, folded or not.
         let unread = store.branch_unread(id, branch);
         let review = (branch.review.as_ref()).map(|r| (r, store.review_state(id, r)));
-        let rename = self.rename_field(item, theme);
+        let rename = self.rename_field(item, theme, cx);
         Some(
             style
                 .row(format!("branch-{id}-{row_id}"), 6.)
@@ -3017,7 +3028,13 @@ impl Navigator {
         let payload = Cut::Commit(id.clone(), moved);
         Some(
             style
-                .commit(format!("commit-{id}-{}", commit_id.0), id, commit, store)
+                .commit(
+                    format!("commit-{id}-{}", commit_id.0),
+                    id,
+                    commit,
+                    store,
+                    self.rename_field(item, style.theme, cx),
+                )
                 // Selected but on its way out.
                 .when(store.hides_commit(id, &commit.key), |el| el.opacity(0.5))
                 .map(|el| self.selectable(el, item, cx))
@@ -3092,6 +3109,7 @@ impl Navigator {
                     glyph,
                     title,
                     unread,
+                    None,
                 )
                 .map(|el| self.selectable(el, item, cx))
                 .when_some(toggle, |el, toggle| el.on_click(double_click(toggle, cx)))

@@ -67,6 +67,14 @@ impl MessageEditor {
         self.body.update(cx, |input, cx| input.set_text(body, cx));
     }
 
+    pub fn set_title(&mut self, title: &str, cx: &mut Context<Self>) {
+        self.title.update(cx, |input, cx| input.set_text(title, cx));
+    }
+
+    pub fn focus_body(&self, window: &mut Window, cx: &mut App) {
+        window.focus(&self.body.focus_handle(cx), cx)
+    }
+
     /// Show `message` as a new editor would, with nothing to undo back to.
     pub fn load(&mut self, message: impl AsRef<str>, cx: &mut Context<Self>) {
         let (title, body) = split(message.as_ref());
@@ -151,7 +159,8 @@ impl Render for MessageEditor {
     }
 }
 
-fn joined(title: &str, body: &str) -> String {
+/// The message with `title` and `body`, a blank line between them when there's a body.
+pub fn joined(title: &str, body: &str) -> String {
     let (title, body) = (title.trim(), body.trim_end());
     match body.is_empty() {
         true => title.to_owned(),

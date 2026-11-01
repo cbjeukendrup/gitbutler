@@ -158,7 +158,7 @@ impl Navigator {
                 let id = format!("mesh-commit-{project}-{key}-{:?}", commit.id);
                 let glyph = small_icon(glyph).text_color(style.meta(color));
                 let title = commit.title.clone().into();
-                style.commit_line(id, COMMIT_INDENT, glyph, title, false)
+                style.commit_line(id, COMMIT_INDENT, glyph, title, false, None)
             }
             (MeshPick::Branch(name), Some(branch)) => {
                 let fold = (project.clone(), key.clone(), name.clone());

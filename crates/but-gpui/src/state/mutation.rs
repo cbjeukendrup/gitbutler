@@ -1860,6 +1860,39 @@ impl Store {
             .any(|o| o.edits_review == Some(number))
     }
 
+    /// Give `project`'s commit `id` `message`, its title and body, shown as its message until
+    /// the reload after. Once saved, the selection follows it and `done` runs.
+    pub fn reword(
+        &mut self,
+        project: &ProjectId,
+        id: CommitId,
+        message: String,
+        done: impl FnOnce(&mut Store, &mut Context<Store>) + 'static,
+        cx: &mut Context<Store>,
+    ) {
+        let reworded = self.key_of(project, id).map(|key| (key, message.clone()));
+        let overlay = Overlay {
+            reworded,
+            ..Overlay::default()
+        };
+        let reword = backend::Reword {
+            commit: id,
+            message,
+        };
+        self.apply(
+            project,
+            "Edit message",
+            overlay,
+            reword,
+            move |store, rewritten, cx| {
+                store.follow(&rewritten, cx);
+                store.snack_undoable("Message updated", cx);
+                done(store, cx)
+            },
+            cx,
+        )
+    }
+
     /// Keep the selection on commits an operation rewrote.
     pub fn follow(&mut self, rewritten: &backend::Rewritten, cx: &mut Context<Self>) {
         if let Some(Selection::Commit(project, id)) = &self.selection

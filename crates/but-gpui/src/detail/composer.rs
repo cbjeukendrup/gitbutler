@@ -4,8 +4,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{Hash as _, Hasher as _};
 
 use gpui::{
-    AnyElement, AnyWindowHandle, App, Context, Focusable as _, Toggled, WeakEntity, Window, div,
-    prelude::*,
+    AnyElement, AnyWindowHandle, App, Context, Entity, Focusable as _, Toggled, WeakEntity, Window,
+    div, prelude::*,
 };
 
 use super::{ChecksChanged, Detail, DiffKey, PickCommitTarget};
@@ -894,29 +894,16 @@ impl Detail {
                         Some(Selection::Commit(_, now)) => now,
                         _ => id,
                     };
-                    let project = project.clone();
                     let (detail, editing) = (cx.entity().downgrade(), editing.clone());
                     let submitted = message.clone();
                     this.store.update(cx, |store, cx| {
-                        let reworded = store.key_of(&project, id).map(|key| (key, message.clone()));
-                        let overlay = Overlay {
-                            reworded,
-                            ..Overlay::default()
-                        };
-                        let reword = backend::Reword {
-                            commit: id,
-                            message,
-                        };
-                        store.apply(
+                        // Open until it lands, so a reword that fails keeps what was written,
+                        // and so does one written on meanwhile.
+                        store.reword(
                             &project,
-                            "Edit message",
-                            overlay,
-                            reword,
-                            move |store, rewritten, cx| {
-                                store.follow(&rewritten, cx);
-                                store.snack_undoable("Message updated", cx);
-                                // Open until it lands, so a reword that fails keeps what was
-                                // written, and so does one written on meanwhile.
+                            id,
+                            message,
+                            move |_, cx| {
                                 (detail.update(cx, |detail, cx| {
                                     if (detail.rewording.as_ref()).is_some_and(|(k, input, _)| {
                                         *k == editing && input.read(cx).text(cx).trim() == submitted
@@ -943,6 +930,38 @@ impl Detail {
         window.focus(&input.focus_handle(cx), cx);
         self.rewording = Some((key, input, subscription));
         cx.notify();
+    }
+
+    /// Edit the selected commit's message with `title`, typed for it in its row, in place of
+    /// its own, the keys in its body. False when another commit's new message is unsaved, as
+    /// the snackbar then says.
+    pub fn reword_in_full(
+        &mut self,
+        title: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.start_reword(window, cx);
+        let Some(input) = self.rewording_selected(cx) else {
+            return false;
+        };
+        input.update(cx, |input, cx| {
+            input.set_title(title, cx);
+            input.focus_body(window, cx)
+        });
+        true
+    }
+
+    /// The editor of the selected commit's message, while it's being edited.
+    pub fn rewording_selected(&self, cx: &App) -> Option<Entity<MessageEditor>> {
+        let Some(Selection::Commit(project, id)) = self.selection(cx) else {
+            return None;
+        };
+        let store = self.store.read(cx);
+        let (_, commit) = store.find_commit(&project, id)?;
+        let (_, input, _) = (self.rewording.as_ref())
+            .filter(|(editing, ..)| rewords(editing, &project, commit, store))?;
+        Some(input.clone())
     }
 
     /// The branch a commit started from the changes' own row goes on first: the topmost one of
