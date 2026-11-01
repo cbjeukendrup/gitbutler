@@ -418,6 +418,12 @@
       "backspace": "message_editor::LeaveEmptyBody"
     }
   },
+  // A commit's title edited in its row saves on Return too, and Tab goes on to its body, in the
+  // commit's header.
+  {
+    "context": "Reword > TextInput",
+    "bindings": { "tab": "message_editor::ToBody" }
+  },
   // As vim steps through matches.
   {
     "context": "Diff && !TextInput",

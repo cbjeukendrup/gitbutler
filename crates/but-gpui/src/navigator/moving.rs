@@ -1267,7 +1267,9 @@ pub(super) fn ghost_row(
     let row = match item {
         Selection::Commit(project, id) => (store.find_commit(project, *id)).map(|(_, commit)| {
             let id = format!("ghost-{project}-{}", id.0);
-            style.commit(id, project, commit, store).into_any_element()
+            style
+                .commit(id, project, commit, store, None)
+                .into_any_element()
         }),
         Selection::Branch(project, ref_name) => (store.workspace(project))
             .and_then(|ws| ws.find_branch(ref_name.as_ref()))
@@ -1360,7 +1362,9 @@ pub(super) fn stand_in(stand_in: &StandIn, store: &Store, theme: &Theme) -> Div 
     let row = match of {
         Gone::Commit(project, commit) => {
             let id = format!("stand-in-{project}-{}", commit.id.0);
-            style.commit(id, project, commit, store).into_any_element()
+            style
+                .commit(id, project, commit, store, None)
+                .into_any_element()
         }
         Gone::Branch { id, name } => branch_copy(id.clone(), name.clone(), style),
         Gone::NewBranch(at) => ghost_branch_row(at, *inset, op.colour(theme), theme),

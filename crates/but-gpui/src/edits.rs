@@ -573,9 +573,17 @@ impl AppView {
         self.discard(checkout.0, checkout.1, changes, window, cx);
     }
 
-    /// Edit the selected commit's message.
+    /// Edit the selected commit's title in its row, as a branch's name is, or its whole message
+    /// in its header, where it's edited already or with the navigator closed.
     fn reword(&mut self, _: &Reword, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(Selection::Commit(..)) = self.selection(cx) {
+        let Some(Selection::Commit(project, id)) = self.selection(cx) else {
+            return;
+        };
+        if self.navigator_open && self.detail.read(cx).rewording_selected(cx).is_none() {
+            (self.navigator).update(cx, |navigator, cx| {
+                navigator.reword(project, id, window, cx)
+            })
+        } else {
             (self.detail).update(cx, |detail, cx| detail.start_reword(window, cx))
         }
     }
