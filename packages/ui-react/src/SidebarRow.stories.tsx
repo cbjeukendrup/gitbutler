@@ -15,7 +15,6 @@ import {
 	UncommittedItem,
 	WorktreeDivider,
 	WorktreeItem,
-	type SidebarRowLayout,
 } from "./SidebarRow.tsx";
 import { machinePictures } from "./story-assets/machines.ts";
 
@@ -27,15 +26,10 @@ const meta = preview.meta({
 	id: "components-sidebarrow",
 	component: BranchItem,
 	parameters: { design: { type: "figma", url: core("2572-3458") } },
-	argTypes: {
-		layout: { control: "inline-radio", options: ["compact", "rich"] },
-	},
 	args: {
 		title: "fix: retry stalled transfers",
 		pr: { number: 377, state: "open" },
 		merged: false,
-		branch: "retry-transfers",
-		layout: "rich",
 		depth: 1,
 		folded: true,
 		selected: false,
@@ -71,9 +65,8 @@ const menu = (what: string) => (
 );
 
 /**
- * A branch with an open pull request. In `rich` it takes two lines: the request's title over the
- * branch's name, the checks, what is still to push, and the next step; the menu shows under the
- * pointer. Switch `layout` to `compact` for one line, the state at the end.
+ * A branch with an open pull request: its checks and what is still to push at the row's end. Under
+ * the pointer the next step and the menu take their place.
  */
 export const Default = meta.story({
 	args: { title: "fix: retry stalled transfers" },
@@ -149,17 +142,15 @@ const machine = (
 	/>
 );
 
-/** The same machine in either layout: two repositories, one with two worktrees and a stack. */
-const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, selected }) => {
-	const rich = layout === "rich";
-	const age = (value: string) => (rich ? undefined : <MetaCount type="age">{value}</MetaCount>);
+/** A machine: two repositories, one with two worktrees and a stack. */
+const Tree: FC<{ selected?: string }> = ({ selected }) => {
+	const age = (value: string) => <MetaCount type="age">{value}</MetaCount>;
 	const [stackFolded, setStackFolded] = useState(false);
 	return (
 		<>
 			<Repository>
-				<RepoItem layout={layout} name="but-dev" folded={false} menu={menu("Repository")} />
+				<RepoItem name="but-dev" folded={false} menu={menu("Repository")} />
 				<WorktreeItem
-					layout={layout}
 					main
 					name="Main worktree"
 					depth={1}
@@ -174,14 +165,12 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 					menu={menu("Worktree")}
 				/>
 				<UncommittedItem
-					layout={layout}
 					count={19}
 					depth={2}
 					selected={selected === "uncommitted"}
 					menu={menu("Uncommitted changes")}
 				/>
 				<BranchItem
-					layout={layout}
 					title="ios-push-handoff"
 					depth={2}
 					folded
@@ -214,10 +203,8 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 				{!stackFolded && (
 					<>
 						<BranchItem
-							layout={layout}
 							title="fix: retry stalled transfers"
 							pr={{ number: 377, state: "open" }}
-							branch="retry-transfers"
 							depth={3}
 							folded
 							meta={
@@ -236,10 +223,8 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 							menu={menu("Branch")}
 						/>
 						<BranchItem
-							layout={layout}
 							title="feat: resume work on another machine"
 							pr={{ number: 280, state: "open" }}
-							branch="resume-work"
 							depth={3}
 							folded={false}
 							meta={
@@ -272,7 +257,6 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 					</>
 				)}
 				<BranchItem
-					layout={layout}
 					title="chore: bump dependencies"
 					pr={{ number: 292, state: "merged" }}
 					depth={2}
@@ -288,7 +272,6 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 				<MoreItem label="3 more" depth={2} />
 				<WorktreeDivider depth={1} />
 				<WorktreeItem
-					layout={layout}
 					name="mesh-archive"
 					depth={1}
 					folded={false}
@@ -301,9 +284,8 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 					actions={update}
 					menu={menu("Worktree")}
 				/>
-				<UncommittedItem layout={layout} count={2} depth={2} menu={menu("Uncommitted changes")} />
+				<UncommittedItem count={2} depth={2} menu={menu("Uncommitted changes")} />
 				<BranchItem
-					layout={layout}
 					title="resume-on-laptop"
 					depth={2}
 					folded
@@ -317,7 +299,6 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 					menu={menu("Branch")}
 				/>
 				<BranchItem
-					layout={layout}
 					title="offline-cache"
 					depth={2}
 					folded="empty"
@@ -327,7 +308,6 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 			</Repository>
 			<Repository last>
 				<RepoItem
-					layout={layout}
 					name="berlin-brutalism"
 					folded={false}
 					meta={
@@ -340,7 +320,6 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 					menu={menu("Repository")}
 				/>
 				<BranchItem
-					layout={layout}
 					title="daemon-idle-cpu"
 					depth={1}
 					folded
@@ -359,28 +338,14 @@ const Tree: FC<{ layout: SidebarRowLayout; selected?: string }> = ({ layout, sel
 };
 
 /**
- * `compact`: one line a row, its state at the end. Under the pointer, on focus and on a selected
- * row, the actions and the menu take the state's place.
+ * Grouped by machine: one line a row, its state at the end. Under the pointer, on focus and on a
+ * selected row, the actions and the menu take the state's place.
  */
-export const Compact = meta.story({
+export const ByMachine = meta.story({
 	parameters: { design: { type: "figma", url: core("2594-15724") } },
 	render: () => (
 		<Card label="pavel--macbook-pro-2" header={machine}>
-			<Tree layout="compact" />
-		</Card>
-	),
-});
-
-/**
- * `rich`: the state and the next step stay in view. A pull request takes two lines, its title
- * wrapping once under its glyph; every other row stays one line, its state and actions right after
- * its name. A merged request stays one muted line.
- */
-export const Rich = meta.story({
-	parameters: { design: { type: "figma", url: core("2642-12033") } },
-	render: () => (
-		<Card label="pavel--macbook-pro-2" header={machine}>
-			<Tree layout="rich" />
+			<Tree />
 		</Card>
 	),
 });
@@ -395,10 +360,10 @@ export const Selection = meta.story({
 	render: () => (
 		<div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
 			<Card label="pavel--macbook-pro-2" header={machine} focused>
-				<Tree layout="rich" selected="commit" />
+				<Tree selected="commit" />
 			</Card>
 			<Card label="pavel--macbook-pro-2" header={machine}>
-				<Tree layout="rich" selected="ios-push-handoff" />
+				<Tree selected="ios-push-handoff" />
 			</Card>
 		</div>
 	),
@@ -431,7 +396,7 @@ const Stack: FC<{
 /** One repository's branches: two stacks around a branch of its own. */
 const Stacks: FC<{ folded: [boolean, boolean] }> = ({ folded }) => (
 	<Repository last>
-		<RepoItem layout="compact" name="but-dev" folded={false} menu={menu("Repository")} />
+		<RepoItem name="but-dev" folded={false} menu={menu("Repository")} />
 		<UncommittedItem count={10} depth={1} menu={menu("Uncommitted changes")} />
 		<BranchItem
 			title="mesh-archive"
@@ -590,9 +555,8 @@ export const Fork = meta.story({
 	render: () => (
 		<Card label="pavel--macbook-pro-2" header={machine}>
 			<Repository last>
-				<RepoItem layout="compact" name="but-dev" folded={false} menu={menu("Repository")} />
+				<RepoItem name="but-dev" folded={false} menu={menu("Repository")} />
 				<WorktreeItem
-					layout="compact"
 					main
 					name="Main worktree"
 					depth={1}
@@ -606,9 +570,8 @@ export const Fork = meta.story({
 					actions={update}
 					menu={menu("Worktree")}
 				/>
-				<UncommittedItem layout="compact" count={19} depth={2} menu={menu("Uncommitted changes")} />
+				<UncommittedItem count={19} depth={2} menu={menu("Uncommitted changes")} />
 				<BranchItem
-					layout="compact"
 					title="ios-push-handoff"
 					depth={2}
 					folded
@@ -623,7 +586,6 @@ export const Fork = meta.story({
 				/>
 				<WorktreeDivider depth={1} />
 				<WorktreeItem
-					layout="compact"
 					main
 					fork
 					name="pavellaptev"
@@ -638,9 +600,8 @@ export const Fork = meta.story({
 					actions={update}
 					menu={menu("Worktree")}
 				/>
-				<UncommittedItem layout="compact" count={22} depth={2} menu={menu("Uncommitted changes")} />
+				<UncommittedItem count={22} depth={2} menu={menu("Uncommitted changes")} />
 				<BranchItem
-					layout="compact"
 					title="review-cards"
 					depth={2}
 					folded
@@ -655,7 +616,6 @@ export const Fork = meta.story({
 				/>
 				<WorktreeDivider depth={1} />
 				<WorktreeItem
-					layout="compact"
 					name="mesh-archive"
 					depth={1}
 					folded
@@ -1020,9 +980,8 @@ const picture = (index: number) => (
 );
 
 /** One repository's card when the sidebar is grouped by repository: its machines, folded or open. */
-const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ layout, open }) => {
-	const rich = layout === "rich";
-	const age = (value: string) => (rich ? undefined : <MetaCount type="age">{value}</MetaCount>);
+const ByRepositoryTree: FC<{ open: boolean }> = ({ open }) => {
+	const age = (value: string) => <MetaCount type="age">{value}</MetaCount>;
 	return (
 		<Repository last>
 			<MachineItem
@@ -1046,7 +1005,6 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 			{open && (
 				<>
 					<WorktreeItem
-						layout={layout}
 						main
 						name="Main worktree"
 						depth={1}
@@ -1060,14 +1018,8 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 						actions={update}
 						menu={menu("Worktree")}
 					/>
-					<UncommittedItem
-						layout={layout}
-						count={12}
-						depth={2}
-						menu={menu("Uncommitted changes")}
-					/>
+					<UncommittedItem count={12} depth={2} menu={menu("Uncommitted changes")} />
 					<BranchItem
-						layout={layout}
 						title="mesh-archive"
 						depth={2}
 						folded
@@ -1081,10 +1033,8 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 						menu={menu("Branch")}
 					/>
 					<BranchItem
-						layout={layout}
 						title="fix: redact remote credentials"
 						pr={{ number: 32, state: "open" }}
-						branch="redact-remote-creds"
 						depth={2}
 						folded
 						meta={
@@ -1104,7 +1054,6 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 					/>
 					<WorktreeDivider depth={1} />
 					<WorktreeItem
-						layout={layout}
 						name="review-ios"
 						depth={1}
 						folded
@@ -1138,7 +1087,6 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 			{open && (
 				<>
 					<BranchItem
-						layout={layout}
 						title="resume-on-laptop"
 						depth={1}
 						folded
@@ -1152,7 +1100,6 @@ const ByRepositoryTree: FC<{ layout: SidebarRowLayout; open: boolean }> = ({ lay
 						menu={menu("Branch")}
 					/>
 					<BranchItem
-						layout={layout}
 						title="feat: archive old worktrees"
 						pr={{ number: 31, state: "merged" }}
 						depth={1}
@@ -1190,20 +1137,17 @@ const repository = <RepoItem name="but-dev" folded={false} menu={menu("Repositor
  * Grouped by repository: the repository heads the card and its machines are rows inside it, each
  * over its own worktrees, or straight over the branches of its only one. Folded, a machine sums up
  * its worktrees and its age, and a cloud machine shows its agents' time. Open, a row over several
- * worktrees shows no age, as each says its own. The same card in `compact` and in `rich`.
+ * worktrees shows no age, as each says its own.
  */
 export const ByRepository = meta.story({
 	parameters: { design: { type: "figma", url: core("2642-10912") } },
 	render: () => (
 		<div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
 			<Card label="but-dev" header={repository}>
-				<ByRepositoryTree layout="compact" open={false} />
+				<ByRepositoryTree open={false} />
 			</Card>
 			<Card label="but-dev" header={repository}>
-				<ByRepositoryTree layout="compact" open />
-			</Card>
-			<Card label="but-dev" header={repository}>
-				<ByRepositoryTree layout="rich" open />
+				<ByRepositoryTree open />
 			</Card>
 		</div>
 	),
